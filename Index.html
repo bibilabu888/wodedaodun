@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>街机游戏之接金币</title>
+    <style>
+        body { margin: 0; padding: 0; background: #2c3e50; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; font-family: sans-serif; user-select: none; position: relative; }
+        #game-container { width: 400px; height: 600px; background: #ecf0f1; position: relative; overflow: hidden; border: 4px solid #bdc3c7; border-radius: 10px; }
+        #basket { width: 80px; height: 40px; position: absolute; bottom: 20px; left: 160px; font-size: 50px; line-height: 40px; text-align: center; z-index: 5; border-radius: 5px; transition: background 0.2s; }
+        .shield-active { background: rgba(52, 152, 219, 0.4); box-shadow: 0 0 15px #3498db; animation: blink 0.5s infinite alternate; }
+        .magnet-active::after { content: '🧲'; position: absolute; top: -25px; left: 25px; font-size: 20px; }
+        @keyframes blink { from { opacity: 0.6; } to { opacity: 1; } }
+        .falling-object { position: absolute; font-size: 35px; width: 40px; height: 40px; text-align: center; line-height: 40px; z-index: 4; }
+        #hud { position: absolute; top: 10px; left: 15px; right: 15px; display: flex; flex-direction: column; gap: 5px; font-size: 18px; font-weight: bold; color: #34495e; z-index: 10; }
+        .hud-row { display: flex; justify-content: space-between; align-items: center; }
+        #lives { color: #e74c3c; font-size: 20px; }
+        #high-score-board { color: #7f8c8d; font-size: 14px; }
+        #status-effects { font-size: 14px; color: #2980b9; font-weight: normal; }
+        #start-screen, #pause-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; z-index: 100; text-align: center; }
+        #start-screen { background: rgba(44, 62, 80, 0.95); }
+        #pause-screen { background: rgba(44, 62, 80, 0.85); display: none; }
+        #tutorial-screen { position: absolute; top: calc(50% - 225px); left: calc(50% - 490px); width: 280px; max-height: 450px; background: rgba(44, 62, 80, 0.85); backdrop-filter: blur(6px); border-radius: 12px; border: 1px solid rgba(255,255,255,0.25); box-sizing: border-box; padding: 18px; display: none; flex-direction: column; color: white; z-index: 999; font-size: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        #t-title { font-size: 16px; margin: 0 0 10px 0; color: #f1c40f; text-align: center; font-weight: bold; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 6px; }
+        .tutorial-card { background: rgba(255, 255, 255, 0.08); padding: 10px; border-radius: 8px; box-sizing: border-box; margin-bottom: 12px; }
+        .tutorial-grid { display: grid; grid-template-columns: auto 1fr; gap: 8px; text-align: left; align-items: center; font-size: 13px; line-height: 1.5; }
+        .btn-style { background: #2ecc71; color: white; border: none; padding: 12px 35px; font-size: 18px; font-weight: bold; border-radius: 25px; cursor: pointer; box-shadow: 0 4px 15px rgba(46, 204, 113, 0.4); }
+        .btn-style:disabled { background: #7f8c8d; box-shadow: none; cursor: not-allowed; }
+        .t-btn-group { display: flex; gap: 5px; margin-top: auto; width: 100%; }
+        .t-sub-btn { background: #e67e22; color: white; border: none; padding: 6px 8px; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; }
+        .t-sub-btn:disabled { background: #7f8c8d; cursor: not-allowed; opacity: 0.5; }
+        #next-t-btn { font-size: 12px; padding: 6px 10px; border-radius: 6px; flex: 1; cursor: pointer; box-shadow: none; }
+    </style>
+</head>
+<body>
+    <div id="tutorial-screen">
+        <div id="t-title">🔰 新手教学 (1/4)</div>
+        <div id="step-1" class="tutorial-card">
+            <p style="font-weight: bold; margin: 0 0 5px 0;">① 按键测试</p>
+            <p style="color: #ea6153; margin: 0 0 5px 0;">请轮流按下键盘：<b>A、D、←、→ 键</b></p>
+            <p id="move-check-status" style="color: #f1c40f; margin: 0;">⏳ 等待操作...</p>
+        </div>
+        <div id="step-2" class="tutorial-card" style="display: none;">
+            <p style="font-weight: bold; margin: 0 0 5px 0;">② 实战接取演练</p>
+            <p style="color: #3498db; margin: 0 0 8px 0; font-size:13px;" id="t-spawn-hint">接住落下的物品！</p>
+            <div class="tutorial-grid" id="t-grid-list">
+                <div>🪙金币</div><div id="ts-coin" style="color:#f1c40f">⏳等待</div>
+                <div>🦠病毒</div><div id="ts-virus" style="color:#7f8c8d">🔒未解</div>
+                <div>🛡️护盾</div><div id="ts-shield" style="color:#7f8c8d">🔒未解</div>
+                <div>🧲磁铁</div><div id="ts-magnet" style="color:#7f8c8d">🔒未解</div>
+                <div>💣炸弹</div><div id="ts-bomb" style="color:#7f8c8d">🔒未解</div>
+                <div>❤️爱心</div><div id="ts-heart" style="color:#7f8c8d">🔒未解</div>
+            </div>
+        </div>
+        <div id="step-3" class="tutorial-card" style="display: none;">
+            <p style="font-weight: bold; margin: 0 0 5px 0;">③ 状态特效触发特训</p>
+            <p style="color: #2ecc71; margin: 0 0 8px 0; font-size:13px;" id="t-effect-hint">观察吃下物品后的分类特性！</p>
+            <div class="tutorial-grid" id="t-effect-list">
+                <div>🪙金币</div><div id="te-coin" style="color:#f1c40f">⏳等待</div>
+                <div>🦠病毒</div><div id="te-virus" style="color:#7f8c8d">🔒未解</div>
+                <div>🛡️护盾</div><div id="te-shield" style="color:#7f8c8d">🔒未解</div>
+                <div>🧲磁铁</div><div id="te-magnet" style="color:#7f8c8d">🔒未解</div>
+                <div>💣炸弹</div><div id="te-bomb" style="color:#7f8c8d">🔒未解</div>
+                <div>❤️爱心</div><div id="te-heart" style="color:#7f8c8d">🔒未解</div>
+            </div>
+        </div>
+        <div id="step-4" class="tutorial-card" style="display: none;">
+            <p style="font-weight: bold; margin: 0 0 5px 0;">④ 紧急暂停</p>
+            <p id="t-pause-hint" style="margin: 0; color:#e67e22;">【特训任务】请在下落的金币雨中，按下键盘上的 P 键 或 Esc 键，成功暂停一次游戏！</p>
+        </div>
+        <div class="t-btn-group">
+            <button id="retry-t-btn" class="t-sub-btn">重来🔄</button>
+            <button id="prev-t-btn" class="t-sub-btn" disabled>上一步⬅️</button>
+            <button id="next-t-btn" class="btn-style" disabled>请先完成操作</button>
+        </div>
+    </div>
+    <div id="game-container">
+        <div id="start-screen">
+            <h2>🎮 接金币🪙</h2>
+            <p style="margin-bottom: 30px; font-size: 14px; color: #bdc3c7;" id="start-sub-text">点击开始进入互动教程</p>
+            <button id="start-btn" class="btn-style">开始游戏</button>
+        </div>
+        <div id="pause-screen">
+            <h2>⏸️ 游戏已暂停</h2>
+            <p>按下 [ P ] 或 [ Esc ] 继续游戏</p>
+        </div>
+        <div id="hud">
+            <div class="hud-row">
+                <div id="score-board">得分: 0</div>
+                <div id="lives">❤️❤️❤️❤️❤️</div>
+            </div>
+            <div class="hud-row">
+                <div id="high-score-board">最高纪录: 0</div>
+                <div id="status-effects"></div>
+            </div>
+        </div>
+        <div id="basket">🧺</div>
+    </div>
+<script>
+    const container = document.getElementById('game-container'); const basket = document.getElementById('basket');
+    const scoreBoard = document.getElementById('score-board'); const livesBoard = document.getElementById('lives');
+    const highScoreBoard = document.getElementById('high-score-board'); const startScreen = document.getElementById('start-screen');
+    const pauseScreen = document.getElementById('pause-screen'); const startBtn = document.getElementById('start-btn');
+    const statusEffects = document.getElementById('status-effects'); const tutorialScreen = document.getElementById('tutorial-screen');
+    const nextTBtn = document.getElementById('next-t-btn'); const prevTBtn = document.getElementById('prev-t-btn');
+    const step1 = document.getElementById('step-1'); const step2 = document.getElementById('step-2'); const step3 = document.getElementById('step-3'); const step4 = document.getElementById('step-4');
+    const moveCheckStatus = document.getElementById('move-check-status');
+
+    let score = 0, lives = 5, highScore = 0, basketX = 160;
+    let gameInterval = null, baseSpeed = 6, currentObjects = [];
+    let isPlaying = false, isPaused = false, isTutorialMode = false;
+    let shieldTimeLeft = 0, magnetTimeLeft = 0; let shieldTimerInterval = null, magnetTimerInterval = null;
+    let currentStep = 1, hasMovedInTutorial = false;
+    let pressedKeysInTutorial = new Set(), tutorialStageList = ['coin', 'virus', 'shield', 'magnet', 'bomb', 'heart'], tutorialStageIdx = 0, tutorialSpawnTimer = null;
+    let hasCaughtCurrentStageObject = false; let caughtTypesInStep2 = new Set();
+
+    // 💡 彻底移除触发 file:/// 浏览器安全锁的 window.onbeforeunload 强退惩罚逻辑，确保本地双击完美运行！
+
+    let audioCtx = null;
+    function createNoiseBuffer() {
+        const bufferSize = audioCtx.sampleRate * 0.4; const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0); for (let i = 0; i < bufferSize; i++) { data[i] = Math.random() * 2 - 1; } return buffer;
+    }
+
+    function playSound(type) {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume(); const now = audioCtx.currentTime;
+        if (type === 'coin') {
+            const o = audioCtx.createOscillator(); const g = audioCtx.createGain(); o.type = 'square'; o.frequency.setValueAtTime(987.77, now); o.frequency.setValueAtTime(1318.51, now + 0.08); g.gain.setValueAtTime(0.08, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.2); o.connect(g); g.connect(audioCtx.destination); o.start(now); o.stop(now + 0.2);
+        } else if (type === 'heart') {
+            [523.25, 659.25, 783.99, 1046.50].forEach((f, i) => { const o = audioCtx.createOscillator(); const g = audioCtx.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(f, now + i * 0.05); g.gain.setValueAtTime(0.08, now + i * 0.05); g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.05 + 0.1); o.connect(g); g.connect(audioCtx.destination); o.start(now + i * 0.05); o.stop(now + i * 0.05 + 0.1); });
+        } else if (type === 'shield') {
+            const o = audioCtx.createOscillator(); const g = audioCtx.createGain(); o.type = 'sawtooth'; o.frequency.setValueAtTime(300, now); o.frequency.linearRampToValueAtTime(900, now + 0.3); g.gain.setValueAtTime(0.05, now); g.gain.linearRampToValueAtTime(0.001, now + 0.3); o.connect(g); g.connect(audioCtx.destination); o.start(now); o.stop(now + 0.3);
+        } else if (type === 'magnet') {
+            const o1 = audioCtx.createOscillator(); const o2 = audioCtx.createOscillator(); const g = audioCtx.createGain(); o1.type = 'square'; o1.frequency.setValueAtTime(1200, now); o1.frequency.exponentialRampToValueAtTime(400, now + 0.3); o2.type = 'sine'; o2.frequency.setValueAtTime(880, now); o2.frequency.exponentialRampToValueAtTime(300, now + 0.3); g.gain.setValueAtTime(0.15, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.35); o1.connect(g); o2.connect(g); g.connect(audioCtx.destination); o1.start(now); o2.start(now); o1.stop(now + 0.35); o2.stop(now + 0.35);
+        } else if (type === 'virus_hurt') {
+            const o = audioCtx.createOscillator(); const g = audioCtx.createGain(); o.type = 'sawtooth'; o.frequency.setValueAtTime(260, now); o.frequency.linearRampToValueAtTime(50, now + 0.22); g.gain.setValueAtTime(0.15, now); g.gain.linearRampToValueAtTime(0.001, now + 0.22); o.connect(g); g.connect(audioCtx.destination); o.start(now); o.stop(now + 0.22);
+        } else if (type === 'bomb_hurt') {
+            const noise = audioCtx.createBufferSource(); noise.buffer = createNoiseBuffer(); const filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.setValueAtTime(800, now); filter.frequency.exponentialRampToValueAtTime(40, now + 0.4); const g = audioCtx.createGain(); g.gain.setValueAtTime(0.35, now); g.gain.linearRampToValueAtTime(0.001, now + 0.4); noise.connect(filter); filter.connect(g); g.connect(audioCtx.destination); noise.start(now); noise.stop(now + 0.4);
+        } else if (type === 'shield_block') {
+            const o = audioCtx.createOscillator(); const g = audioCtx.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(120, now); g.gain.setValueAtTime(0.2, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.12); o.connect(g); g.connect(audioCtx.destination); o.start(now); o.stop(now + 0.12);
+        } else if (type === 'mario_death') {
+            const nt = [[494, 0.08], [523, 0.08], [554, 0.08], [587, 0.15], [0, 0.05], [523, 0.12], [494, 0.12], [440, 0.12], [392, 0.15], [349, 0.15], [330, 0.4]]; let os = 0; nt.forEach(([f, d]) => { if (f > 0) { const o = audioCtx.createOscillator(); const g = audioCtx.createGain(); o.type = 'square'; o.frequency.setValueAtTime(f, now + os); g.gain.setValueAtTime(0.1, now + os); g.gain.setValueAtTime(0.1, now + os + d - 0.02); g.gain.exponentialRampToValueAtTime(0.001, now + os + d); o.connect(g); g.connect(audioCtx.destination); o.start(now + os); o.stop(now + os + d); } os += d; });
+        }
+    }
+    highScore = localStorage.getItem('catchCoinHighScore') || 0; highScoreBoard.innerText = '最高纪录: ' + highScore;
+    if(localStorage.getItem('catchCoinTutorialDone') === 'true') { document.getElementById('start-sub-text').innerText = "🥇 您已成功通关特训，点击将直接开局！"; document.getElementById('start-sub-text').style.color = "#2ecc71"; }
+
+    if (startBtn) startBtn.onclick = function() { if(!audioCtx) playSound('init'); startScreen.style.display = 'none'; if (localStorage.getItem('catchCoinTutorialDone') === 'true') { realStartGame(); } else { openTutorial(); } };
+    
+    if (nextTBtn) {
+        nextTBtn.onclick = function() {
+            if (!audioCtx) playSound('init');
+            if (isTutorialMode && currentStep === 3 && !hasCaughtCurrentStageObject && tutorialStageIdx < tutorialStageList.length) return;
+            if (isTutorialMode && currentStep === 3 && hasCaughtCurrentStageObject) { hasCaughtCurrentStageObject = false; tutorialStageIdx++; startTutorialStage(); return; }
+            handleTutorialNext();
+        };
+    }
+
+    if (prevTBtn) {
+        prevTBtn.onclick = function() {
+            if (tutorialSpawnTimer) clearInterval(tutorialSpawnTimer); if (gameInterval) clearInterval(gameInterval);
+            const fallingObjs = container.querySelectorAll('.falling-object'); fallingObjs.forEach(el => el.remove()); currentObjects = [];
+            if (shieldTimerInterval) clearInterval(shieldTimerInterval); if (magnetTimerInterval) clearInterval(magnetTimerInterval);
+            shieldTimeLeft = 0; magnetTimeLeft = 0; updateStatusText(); basket.className = ""; lives = 5; updateHUD();
+            if (currentStep === 2) { currentStep = 1; document.getElementById('t-title').innerText = "🔰 新手教学 (1/4)"; step2.style.display = 'none'; step1.style.display = 'block'; prevTBtn.disabled = true; pressedKeysInTutorial.clear(); hasMovedInTutorial = false; nextTBtn.disabled = true; nextTBtn.innerText = "请先完成操作"; moveCheckStatus.innerHTML = "⏳ 等待操作..."; moveCheckStatus.style.color = "#f1c40f"; }
+            else if (currentStep === 3) {
+                if (tutorialStageIdx > 0) {
+                    let currentType = tutorialStageList[tutorialStageIdx]; document.getElementById('te-' + currentType).innerText = "🔒未解"; document.getElementById('te-' + currentType).style.color = "#7f8c8d";
+                    tutorialStageIdx--; hasCaughtCurrentStageObject = false; nextTBtn.disabled = true; nextTBtn.innerText = "请体验所有的属性变化"; startTutorialStage();
+                } else {
+                    currentStep = 2; document.getElementById('t-title').innerText = "🔰 新手教学 (2/4)"; step3.style.display = 'none'; step2.style.display = 'block'; nextTBtn.disabled = true; nextTBtn.innerText = "请接住所有演示物品"; tutorialStageIdx = 0; caughtTypesInStep2.clear(); startTutorialStage();
+                }
+            }
+            else if (currentStep === 4) { currentStep = 3; document.getElementById('t-title').innerText = "🔰 新手教学 (3/4)"; step4.style.display = 'none'; step3.style.display = 'block'; nextTBtn.disabled = true; nextTBtn.innerText = "请体验所有的属性变化"; tutorialStageIdx = tutorialStageList.length - 1; hasCaughtCurrentStageObject = false; tutorialStageList.forEach((type) => { document.getElementById('te-' + type).innerText = "🔒未解"; document.getElementById('te-' + type).style.color = "#7f8c8d"; }); startTutorialStage(); }
+        };
+    }
+
+    const retryTBtn = document.getElementById('retry-t-btn');
+    if (retryTBtn) {
+        retryTBtn.onclick = function() {
+            if (currentStep === 1) { pressedKeysInTutorial.clear(); hasMovedInTutorial = false; nextTBtn.disabled = true; nextTBtn.innerText = "请先完成操作"; moveCheckStatus.innerHTML = "⏳ 等待操作..."; moveCheckStatus.style.color = "#f1c40f"; } 
+            else if (currentStep === 2 || currentStep === 3) { if (tutorialSpawnTimer) clearInterval(tutorialSpawnTimer); const fallingObjs = container.querySelectorAll('.falling-object'); fallingObjs.forEach(el => el.remove()); tutorialStageIdx = 0; hasCaughtCurrentStageObject = false; caughtTypesInStep2.clear(); nextTBtn.disabled = true; nextTBtn.innerText = currentStep === 2 ? "请接住所有演示物品" : "请体验所有的属性变化"; let prefix = currentStep === 2 ? 'ts-' : 'te-'; tutorialStageList.forEach((type, idx) => { let el = document.getElementById(prefix + type); if (idx === 0) { el.innerText = "⏳等待"; el.style.color = "#f1c40f"; } else { el.innerText = "🔒未解"; el.style.color = "#7f8c8d"; } }); startTutorialStage(); }
+        };
+    }
+
+    document.onkeydown = function(e) {
+        const key = e.key.toLowerCase(); if (key === 'p' || key === 'escape' || e.code === 'Escape') { if (isPlaying) { e.preventDefault(); togglePause(); return; } }
+        let moved = false;
+        if (key === 'a' || key === 'arrowleft' || e.code === 'ArrowLeft') {
+            if (basketX > 0) { basketX -= 30; moved = true; }
+            if (isTutorialMode && currentStep === 1) { if (key === 'a') pressedKeysInTutorial.add('A'); if (key === 'arrowleft' || e.code === 'ArrowLeft') pressedKeysInTutorial.add('LeftArrow'); }
+        } else if (key === 'd' || key === 'arrowright' || e.code === 'ArrowRight') {
+            if (basketX < 320) { basketX += 30; moved = true; }
+            if (isTutorialMode && currentStep === 1) { if (key === 'd') pressedKeysInTutorial.add('D'); if (key === 'arrowright' || e.code === 'ArrowRight') pressedKeysInTutorial.add('RightArrow'); }
+        }
+        if (moved) {
+            basket.style.left = basketX + 'px';
+            if (isTutorialMode && currentStep === 1 && !hasMovedInTutorial) {
+                let rem = []; if (!pressedKeysInTutorial.has('A')) rem.push('A'); if (!pressedKeysInTutorial.has('D')) rem.push('D'); if (!pressedKeysInTutorial.has('LeftArrow')) rem.push('←'); if (!pressedKeysInTutorial.has('RightArrow')) rem.push('→');
+                if (rem.length > 0) { moveCheckStatus.innerHTML = `⏳ 待按: <b style="color:#e74c3c">${rem.join(',')}</b>`; } 
+                else { hasMovedInTutorial = true; moveCheckStatus.innerHTML = "<b style='color:#2ecc71'>✅ 按键测试通过！</b>"; nextTBtn.disabled = false; nextTBtn.innerText = "下一步➡️"; }
+            }
+        }
+    };
+
+    function openTutorial() {
+        isTutorialMode = true; currentStep = 1; hasMovedInTutorial = false; pressedKeysInTutorial.clear();
+        tutorialScreen.style.display = 'flex'; step1.style.display = 'block'; step2.style.display = 'none'; step3.style.display = 'none'; step4.style.display = 'none';
+        document.getElementById('t-title').innerText = "🔰 新手教学 (1/4)"; prevTBtn.disabled = true; nextTBtn.disabled = true; nextTBtn.innerText = "请先完成操作"; basketX = 160; basket.style.left = basketX + 'px';
+    }
+
+    function handleTutorialNext() {
+        if (currentStep === 1) {
+            currentStep = 2; document.getElementById('t-title').innerText = "🔰 新手教学 (2/4)"; step1.style.display = 'none'; step2.style.display = 'block'; prevTBtn.disabled = false; nextTBtn.disabled = true; nextTBtn.innerText = "请接住所有演示物品"; tutorialStageIdx = 0; startTutorialStage();
+        } else if (currentStep === 2) {
+            if (tutorialSpawnTimer) clearInterval(tutorialSpawnTimer); const fallingObjs = container.querySelectorAll('.falling-object'); fallingObjs.forEach(el => el.remove());
+            currentStep = 3; document.getElementById('t-title').innerText = "🔰 新手教学 (3/4)"; step2.style.display = 'none'; step3.style.display = 'block'; nextTBtn.disabled = true; nextTBtn.innerText = "请体验所有的属性变化"; tutorialStageIdx = 0; startTutorialStage();
+        } else if (currentStep === 3) {
+            if (tutorialSpawnTimer) clearInterval(tutorialSpawnTimer); const fallingObjs = container.querySelectorAll('.falling-object'); fallingObjs.forEach(el => el.remove());
+            if (shieldTimerInterval) clearInterval(shieldTimerInterval); if (magnetTimerInterval) clearInterval(magnetTimerInterval); shieldTimeLeft = 0; magnetTimeLeft = 0; updateStatusText();
+            currentStep = 4; isPlaying = true; document.getElementById('t-title').innerText = "🔰 新手教学 (4/4)"; step3.style.display = 'none'; step4.style.display = 'block'; nextTBtn.disabled = true; nextTBtn.innerText = "请模拟按P/Esc暂停一次"; startTutorialStep4Loop();
+        } else if (currentStep === 4) {
+            localStorage.setItem('catchCoinTutorialDone', 'true'); tutorialScreen.style.display = 'none'; isTutorialMode = false; realStartGame();
+        }
+    }
+
+        function startTutorialStage() {
+        let list = tutorialStageList; if (tutorialStageIdx >= list.length) { if (currentStep === 2) { document.getElementById('t-spawn-hint').innerHTML = "<b style='color:#2ecc71'>🎉 物品碰撞模拟演练完毕！</b>"; nextTBtn.disabled = false; nextTBtn.innerText = "下一步➡️"; } else if (currentStep === 3) { document.getElementById('t-effect-hint').innerHTML = "<b style='color:#2ecc71'>🎉 所有属性和状态特训已完成！</b>"; nextTBtn.disabled = false; nextTBtn.innerText = "下一步➡️"; } return; }
+        let type = list[tutorialStageIdx]; let names = {coin:'🪙金币', virus:'🦠病毒', shield:'🛡️护盾', magnet:'🧲磁铁', bomb:'💣炸弹', heart:'❤️爱心'}; let hintId = currentStep === 2 ? 't-spawn-hint' : 't-effect-hint'; let prefix = currentStep === 2 ? 'ts-' : 'te-';
+        if (currentStep === 3) { if (shieldTimerInterval) clearInterval(shieldTimerInterval); if (magnetTimerInterval) clearInterval(magnetTimerInterval); shieldTimeLeft = 0; magnetTimeLeft = 0; basket.className = ""; lives = 5; updateStatusText(); updateHUD(); }
+        let effectsDesc = { coin: '<b style="color:#f1c40f">【数值变化】</b> 得分 +10', virus: '<b style="color:#e74c3c">【数值变化】</b> 扣除 1 颗心', shield: '<b style="color:#3498db">【身体变化】</b> 7秒身体变蓝发光（免疫伤害）', magnet: '<b style="color:#9b59b6">【身体变化】</b> 10秒自动吸取周围金币', bomb: '<b style="color:#e67e22">【数值变化】</b> 重伤扣除 2 颗心', heart: '<b style="color:#2ecc71">【数值变化】</b> 生命值增加 1 颗心' };
+        document.getElementById(hintId).innerHTML = currentStep === 2 ? `接取演练：请用篮子去接住下落的 <b style="color:#f1c40f;">${names[type]}</b>！` : `属性演练：接住后触发 ${effectsDesc[type]}！`;
+        document.getElementById(prefix + type).innerText = "⏳下落中"; document.getElementById(prefix + type).style.color = "#f1c40f"; spawnSingleTutorialObject(type);
+    }
+
+    function spawnSingleTutorialObject(type) {
+        let emojis = {coin:'🪙', bomb:'💣', virus:'🦠', heart:'❤️', shield:'🛡️', magnet:'🧲'}; const objEl = document.createElement('div'); objEl.className = 'falling-object'; objEl.innerText = emojis[type];
+        let randomX = 100 + Math.floor(Math.random() * 150); objEl.style.left = randomX + 'px'; objEl.style.top = '-40px'; container.appendChild(objEl); let objY = -40;
+        if(tutorialSpawnTimer) clearInterval(tutorialSpawnTimer);
+        tutorialSpawnTimer = setInterval(() => {
+            if (currentStep === 3 && magnetTimeLeft > 0 && type === 'coin') { let bc = basketX + 40; let cc = randomX + 20; let diff = bc - cc; if (Math.abs(diff) <= 4) randomX = bc - 20; else randomX += diff > 0 ? 4 : -4; objEl.style.left = randomX + 'px'; }
+            objY += 4; objEl.style.top = objY + 'px';
+            if (objY + 40 >= 540 && objY <= 580) {
+                if (randomX + 35 >= basketX && randomX <= basketX + 75) {
+                    clearInterval(tutorialSpawnTimer); objEl.remove();
+                    if (currentStep === 2) {
+                        playSound(type === 'bomb' ? 'bomb_hurt' : (type === 'virus' ? 'virus_hurt' : type)); document.getElementById('ts-' + type).innerText = "✅成功"; document.getElementById('ts-' + type).style.color = "#2ecc71";
+                        caughtTypesInStep2.add(type);
+                        if (caughtTypesInStep2.size >= 3) { document.getElementById('t-spawn-hint').innerHTML = "<b style='color:#2ecc71'>🎉 已成功接满 3 种不同的物品，模拟演练完毕！</b>"; nextTBtn.disabled = false; nextTBtn.innerText = "下一步➡️"; } 
+                        else { document.getElementById('t-spawn-hint').innerHTML = `接取演练：请继续挑着接！[ 已收集 <b style="color:#2ecc71">${caughtTypesInStep2.size}</b> / 3 种 ]`; let remainTypes = tutorialStageList.filter(t => !caughtTypesInStep2.has(t)); tutorialStageIdx = tutorialStageList.indexOf(remainTypes[Math.floor(Math.random() * remainTypes.length)]); setTimeout(startTutorialStage, 400); }
+                    } else if (currentStep === 3) {
+                        if (type === 'coin') { score += 10; playSound('coin'); } else if (type === 'shield') { activateShield(); playSound('shield'); } else if (type === 'magnet') { activateMagnet(); playSound('magnet'); } else if (type === 'heart') { lives = Math.min(7, lives + 1); playSound('heart'); }
+                        else { if (shieldTimeLeft <= 0) { if (type === 'bomb') { lives = Math.max(1, lives - 2); playSound('bomb_hurt'); } if (type === 'virus') { lives = Math.max(1, lives - 1); playSound('virus_hurt'); } } else { playSound('shield_block'); } }
+                        updateHUD(); document.getElementById('te-' + type).innerText = "✅成功"; document.getElementById('te-' + type).style.color = "#2ecc71";
+                        hasCaughtCurrentStageObject = true; nextTBtn.disabled = false; nextTBtn.innerText = "下一步➡️";
+                    }
+                    return;
+                }
+            }
+            if (objY >= 600) {
+                clearInterval(tutorialSpawnTimer); objEl.remove();
+                if (currentStep === 2) { let remainTypes = tutorialStageList.filter(t => !caughtTypesInStep2.has(t)); tutorialStageIdx = tutorialStageList.indexOf(remainTypes[Math.floor(Math.random() * remainTypes.length)]); startTutorialStage(); } 
+                else { spawnSingleTutorialObject(type); }
+            }
+        }, 20);
+    }
+
+    function startTutorialStep4Loop() {
+        if(gameInterval) clearInterval(gameInterval);
+        gameInterval = setInterval(() => {
+            if (Math.random() < 0.08) { const objEl = document.createElement('div'); objEl.className = 'falling-object'; objEl.innerText = '🪙'; objEl.style.left = Math.floor(Math.random() * 360) + 'px'; objEl.style.top = '-40px'; container.appendChild(objEl); currentObjects.push({element: objEl, type: 'coin', y: -40, x: parseInt(objEl.style.left)}); }
+            for (let i = currentObjects.length - 1; i >= 0; i--) { let obj = currentObjects[i]; obj.y += 5; obj.element.style.top = obj.y + 'px'; if (obj.y + 40 >= 540 && obj.y <= 580) { if (obj.x + 35 >= basketX && obj.x <= basketX + 75) { obj.element.remove(); currentObjects.splice(i, 1); playSound('coin'); continue; } } if (obj.y >= 600) { obj.element.remove(); currentObjects.splice(i, 1); } }
+        }, 20);
+    }
+
+    function togglePause() {
+        if (!isPaused) { 
+            isPaused = true; clearInterval(gameInterval); pauseScreen.style.display = 'flex'; 
+            // 💡 已成功删除“官方”字样，变成最纯粹动感的“开始游戏”！
+            if (isTutorialMode && currentStep === 4) { nextTBtn.disabled = false; nextTBtn.innerText = "开始游戏🎮"; } 
+        } 
+        else { isPaused = false; pauseScreen.style.display = 'none'; if (isTutorialMode && currentStep === 4) { startTutorialStep4Loop(); } else if (!isTutorialMode) { gameInterval = setInterval(updateGame, 20); } }
+    }
+
+    function spawnObject() {
+        if (currentObjects.length >= 6) return; const rand = Math.random(); let type, emoji;
+        if (rand < 0.55) { type = 'coin'; emoji = '🪙'; } else if (rand < 0.75) { type = 'bomb'; emoji = '💣'; } else if (rand < 0.87) { type = 'virus'; emoji = '🦠'; } else if (rand < 0.95) { type = 'heart'; emoji = '❤️'; } else if (rand < 0.975) { type = 'shield'; emoji = '🛡️'; } else { type = 'magnet'; emoji = '🧲'; }
+        const objEl = document.createElement('div'); objEl.className = 'falling-object'; objEl.innerText = emoji; objEl.style.left = Math.floor(Math.random() * 360) + 'px'; objEl.style.top = '-40px'; container.appendChild(objEl); currentObjects.push({element: objEl, type: type, y: -40, x: parseInt(objEl.style.left)});
+    }
+
+    function updateGame() {
+        let speed = baseSpeed + (score / 20) * 0.5; if (Math.random() < 0.08) { spawnObject(); }
+        for (let i = currentObjects.length - 1; i >= 0; i--) { let obj = currentObjects[i]; if (magnetTimeLeft > 0 && obj.type === 'coin') { let bc = basketX + 40; let cc = obj.x + 20; let diff = bc - cc; if (Math.abs(diff) <= 4) obj.x = bc - 20; else obj.x += diff > 0 ? 4 : -4; obj.element.style.left = obj.x + 'px'; } obj.y += speed; obj.element.style.top = obj.y + 'px'; if (obj.y + 40 >= 540 && obj.y <= 580) { if (obj.x + 35 >= basketX && obj.x <= basketX + 75) { handleCatch(obj.type); obj.element.remove(); currentObjects.splice(i, 1); continue; } } if (obj.y >= 600) { obj.element.remove(); currentObjects.splice(i, 1); } }
+    }
+
+    function handleCatch(type) {
+        if (type === 'coin') { score += 10; playSound('coin'); } else if (type === 'shield') { activateShield(); playSound('shield'); } else if (type === 'magnet') { activateMagnet(); playSound('magnet'); } else if (type === 'heart') { if (lives < 7) { lives += 1; playSound('heart'); } }
+        else { if (shieldTimeLeft <= 0) { if (type === 'bomb') { lives -= 2; playSound('bomb_hurt'); } if (type === 'virus') { lives -= 1; playSound('virus_hurt'); } } else { playSound('shield_block'); } }
+        updateHUD(); checkGameOver();
+    }
+
+    // 💡 修复老版本第4步通关后刷新HUD数据的次序锁
+    function updateHUD() { if (lives < 0) lives = 0; scoreBoard.innerText = '得分: ' + score; livesBoard.innerText = '❤️'.repeat(lives); if (score > highScore) { highScore = score; localStorage.setItem('catchCoinHighScore', highScore); highScoreBoard.innerText = '最高纪录: ' + highScore; } }
+    function activateShield() { shieldTimeLeft = 7; basket.classList.add('shield-active'); if (shieldTimerInterval) clearInterval(shieldTimerInterval); shieldTimerInterval = setInterval(() => { shieldTimeLeft--; updateStatusText(); if (shieldTimeLeft <= 0) { clearInterval(shieldTimerInterval); basket.classList.remove('shield-active'); updateStatusText(); } }, 1000); updateStatusText(); }
+    function activateMagnet() { magnetTimeLeft = 10; basket.classList.add('magnet-active'); if (magnetTimerInterval) clearInterval(magnetTimerInterval); magnetTimerInterval = setInterval(() => { magnetTimeLeft--; updateStatusText(); if (magnetTimeLeft <= 0) { clearInterval(magnetTimerInterval); basket.classList.remove('magnet-active'); updateStatusText(); } }, 1000); updateStatusText(); }
+	    function updateStatusText() { 
+        let text = ""; 
+        if (shieldTimeLeft > 0) text += `🛡️ 护盾:${shieldTimeLeft}s `; 
+        if (magnetTimeLeft > 0) text += `🧲 磁铁:${magnetTimeLeft}s`; 
+        statusEffects.innerText = text; 
+    }
+    function checkGameOver() {
+        if (lives <= 0) {
+            isPlaying = false; 
+            clearInterval(gameInterval); 
+            if (shieldTimerInterval) clearInterval(shieldTimerInterval); 
+            if (magnetTimerInterval) clearInterval(magnetTimerInterval); 
+            basket.className = ""; shieldTimeLeft = 0; magnetTimeLeft = 0; updateStatusText(); 
+            currentObjects.forEach(obj => obj.element.remove()); currentObjects = []; 
+            playSound('mario_death');
+            setTimeout(() => { 
+                alert('游戏结束！最终得分: ' + score + '\n最高纪录: ' + highScore); 
+                startScreen.style.display = 'flex'; 
+                if(localStorage.getItem('catchCoinTutorialDone') === 'true') { 
+                    document.getElementById('start-sub-text').innerText = "🥇 您已成功通关特训，点击将直接开局！"; 
+                    document.getElementById('start-sub-text').style.color = "#2ecc71"; 
+                } 
+            }, 1600);
+        }
+    }
+    function realStartGame() { 
+        isPlaying = true; isPaused = false; score = 0; lives = 5; basketX = 160; 
+        basket.style.left = basketX + 'px'; basket.style.bottom = "20px"; basket.className = ""; 
+        if (shieldTimerInterval) clearInterval(shieldTimerInterval); 
+        if (magnetTimerInterval) clearInterval(magnetTimerInterval); 
+        shieldTimeLeft = 0; magnetTimeLeft = 0; updateStatusText(); 
+        const oldObjects = container.querySelectorAll('.falling-object'); 
+        oldObjects.forEach(el => el.remove()); currentObjects = []; 
+        highScore = localStorage.getItem('catchCoinHighScore') || 0; updateHUD(); 
+        if(gameInterval) clearInterval(gameInterval); gameInterval = setInterval(updateGame, 20); 
+    }
+</script>
+</body>
+</html>
